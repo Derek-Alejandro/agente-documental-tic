@@ -1,16 +1,57 @@
 
 /* =====================================================
-   ARCHIVO TIC IA - PRACTICA 2.3
-   Frontend corregido
-   Google Drive + OpenAI + Comparador RAG
+   ARCHIVO TIC IA - PRÁCTICA 2.3
+
+   Google Drive + OpenAI Responses API + File Search
+
+   Compatible con:
+   - Localhost: FastAPI local
+   - GitHub Pages: backend Vercel
+
+   Funcionalidades:
+   - Chat documental
+   - File Search (RAG)
+   - Comparador con y sin RAG
+   - Documentos de Google Drive
+   - Filtros documentales
+   - Sincronización local
+   - Fuentes verificables
+   - Copiar respuestas
+   - Exportar conversación TXT
    ===================================================== */
 
-// FastAPI sirve el frontend y la API desde localhost.
-// No necesitamos importar api.js para iniciar la app.
 
-const API_ROOT = "";
+/* =====================================================
+   1. CONFIGURACIÓN DE ENTORNO
+   ===================================================== */
+
+// Detectar ejecución local.
+
+const IS_LOCAL = [
+  "localhost",
+  "127.0.0.1"
+].includes(window.location.hostname);
+
+
+// Backend correspondiente a cada entorno.
+//
+// Localhost:
+// Usa rutas relativas del mismo servidor FastAPI.
+//
+// GitHub Pages:
+// Consume el backend desplegado en Vercel.
+
+const API_ROOT = IS_LOCAL
+  ? ""
+  : "https://agente-documental-tic-two.vercel.app";
+
+
+// Acceso a elementos HTML.
 
 const $ = (id) => document.getElementById(id);
+
+
+// Estado temporal de la aplicación.
 
 const state = {
   documents: [],
@@ -19,45 +60,89 @@ const state = {
   syncing: false
 };
 
-// Compatible con las dos versiones anteriores del HTML.
+
+// Respaldo para versiones anteriores del HTML.
+
 const originalWelcome =
   $("empty-state")?.cloneNode(true) || null;
 
 
 /* =====================================================
-   CONEXION CON FASTAPI
+   2. CONEXIÓN CON FASTAPI
    ===================================================== */
 
 async function request(path, options = {}) {
+
   let response;
 
   try {
-    response = await fetch(`${API_ROOT}${path}`, {
-      cache: "no-store",
-      ...options
-    });
-  } catch {
+
+    response = await fetch(
+      `${API_ROOT}${path}`,
+      {
+        cache: "no-store",
+        ...options
+      }
+    );
+
+  } catch (error) {
+
+    console.error(
+      "Error de conexión:",
+      error
+    );
+
     throw new Error(
-      "No se pudo conectar al servidor. Verifica que python app.py siga ejecutándose."
+      IS_LOCAL
+        ? "No se pudo conectar con FastAPI. Verifica que python app.py esté ejecutándose."
+        : "No se pudo conectar con Vercel. Comprueba la URL del backend y la configuración CORS."
     );
   }
 
+
+  // Leer contenido de la respuesta.
+
   const raw = await response.text();
+
   let data;
 
   try {
+
     data = JSON.parse(raw);
+
   } catch {
+
     throw new Error(
-      `La ruta ${path} no devolvió JSON válido (HTTP ${response.status}).`
+      `El endpoint ${path} no devolvió JSON válido. ` +
+      `HTTP ${response.status}.`
     );
   }
 
+
+  // Gestionar errores HTTP.
+
   if (!response.ok) {
-    const detail =
-      typeof data.detail === "string"
-        ? data.detail
-        : `Error HTTP ${response.status} en ${path}`;
+
+    let detail = `Error HTTP ${response.status}`;
+
+    if (typeof data.detail === "string") {
+
+      detail = data.detail;
+
+    } else if (
+      Array.isArray(data.detail)
+    ) {
+
+      detail = data.detail
+        .map((item) => item.msg || "Error")
+        .join("; ");
+
+    } else if (
+      typeof data.message === "string"
+    ) {
+
+      detail = data.message;
+    }
 
     throw new Error(detail);
   }
@@ -65,88 +150,147 @@ async function request(path, options = {}) {
   return data;
 }
 
+
+/* =====================================================
+   3. ENDPOINTS API
+   ===================================================== */
+
 const api = {
-  health: () => request("/api/health"),
 
-  documents: () => request("/api/documents"),
+  // Estado del backend.
+  health: () => request(
+    "/api/health"
+  ),
 
-  ask: (question, useSearch) =>
-    request("/api/ask", {
+  // Documentos indexados.
+  documents: () => request(
+    "/api/documents"
+  ),
+
+  // Consulta a OpenAI.
+  ask: (question, useSearch) => request(
+    "/api/ask",
+    {
       method: "POST",
+
       headers: {
         "Content-Type": "application/json"
       },
+
       body: JSON.stringify({
-        question,
+        question: question,
         use_search: useSearch
       })
-    }),
+    }
+  ),
 
-  sync: () =>
-    request("/api/sync", {
+  // Sincronización local de Drive.
+  sync: () => request(
+    "/api/sync",
+    {
       method: "POST"
-    })
+    }
+  )
 };
 
 
 /* =====================================================
-   UTILIDADES
+   4. UTILIDADES
    ===================================================== */
 
-function make(tag, className = "", text = "") {
-  const node = document.createElement(tag);
+function make(
+  tag,
+  className = "",
+  text = ""
+) {
+
+  const element = document.createElement(tag);
 
   if (className) {
-    node.className = className;
+    element.className = className;
   }
 
-  node.textContent = text;
+  element.textContent = text;
 
-  return node;
+  return element;
 }
 
-function notify(text, kind = "info") {
+
+// Notificaciones.
+
+function notify(
+  text,
+  kind = "info"
+) {
+
   const box = $("message");
 
   if (!box) return;
 
   box.textContent = text;
+
   box.className = `notification ${kind}`;
+
   box.hidden = false;
 }
 
+
+// Ocultar notificaciones.
+
 function clearNotice() {
+
   const box = $("message");
 
   if (!box) return;
 
   box.hidden = true;
+
   box.textContent = "";
 }
 
+
+// Validar URL original de Google Drive.
+
 function driveLink(source) {
+
+  if (!source?.url) {
+    return null;
+  }
+
   try {
-    const url = new URL(source?.url);
+
+    const url = new URL(source.url);
+
+    const allowedHosts = [
+      "drive.google.com",
+      "docs.google.com"
+    ];
 
     if (
       url.protocol === "https:" &&
-      ["drive.google.com", "docs.google.com"].includes(
-        url.hostname
-      )
+      allowedHosts.includes(url.hostname)
     ) {
+
       return url.href;
     }
+
   } catch {
-    // Enlace ausente o inválido.
+
+    // URL no válida.
   }
 
   return null;
 }
 
+
+// Identificar tipo de documento.
+
 function documentType(doc) {
+
   const mime = doc?.mime_type || "";
 
   if (mime === "application/pdf") {
+
     return {
       code: "pdf",
       label: "PDF"
@@ -156,6 +300,7 @@ function documentType(doc) {
   if (
     mime === "application/vnd.google-apps.document"
   ) {
+
     return {
       code: "docs",
       label: "DOC"
@@ -170,52 +315,81 @@ function documentType(doc) {
 
 
 /* =====================================================
-   LISTADO DE GOOGLE DRIVE
+   5. DOCUMENTOS INDEXADOS
    ===================================================== */
 
 function renderDocuments() {
+
   const list = $("documents");
 
   if (!list) return;
 
   list.replaceChildren();
 
+
+  // Filtro por nombre.
+
   const filter = (
     $("doc-search")?.value || ""
-  ).trim().toLocaleLowerCase("es");
+  )
+    .trim()
+    .toLocaleLowerCase("es");
 
-  const format = $("doc-type")?.value || "all";
 
-  const shown = state.documents.filter((doc) => {
-    const matchesName = String(
-      doc.name || ""
-    ).toLocaleLowerCase("es").includes(filter);
+  // Filtro por formato.
 
-    const matchesFormat =
-      format === "all" ||
-      documentType(doc).code === format;
+  const format =
+    $("doc-type")?.value || "all";
 
-    return matchesName && matchesFormat;
-  });
 
-  if (!shown.length) {
+  const shown = state.documents.filter(
+    (doc) => {
+
+      const name = String(
+        doc.name || ""
+      ).toLocaleLowerCase("es");
+
+      const matchesName = name.includes(filter);
+
+      const matchesFormat =
+        format === "all" ||
+        documentType(doc).code === format;
+
+      return matchesName && matchesFormat;
+    }
+  );
+
+
+  // Biblioteca vacía.
+
+  if (shown.length === 0) {
+
+    const message = state.documents.length
+      ? "No hay documentos que coincidan con los filtros."
+      : "Todavía no hay documentos indexados.";
+
     list.append(
       make(
         "div",
         "docs-placeholder",
-        state.documents.length
-          ? "No hay documentos que coincidan con los filtros."
-          : "Todavía no hay documentos indexados. Utiliza Sincronizar Drive."
+        message
       )
     );
 
     return;
   }
 
+
+  // Mostrar archivos.
+
   for (const doc of shown) {
+
     const type = documentType(doc);
 
-    const item = make("div", "doc-item");
+    const item = make(
+      "div",
+      "doc-item"
+    );
 
     const badge = make(
       "span",
@@ -223,7 +397,10 @@ function renderDocuments() {
       type.label
     );
 
-    const content = make("div", "doc-main");
+    const content = make(
+      "div",
+      "doc-main"
+    );
 
     const href = driveLink(doc);
 
@@ -234,9 +411,13 @@ function renderDocuments() {
     );
 
     if (href) {
+
       name.href = href;
+
       name.target = "_blank";
-      name.rel = "noopener noreferrer";
+
+      name.rel =
+        "noopener noreferrer";
     }
 
     const meta = make(
@@ -245,13 +426,29 @@ function renderDocuments() {
       `${type.label} · indexado`
     );
 
-    content.append(name, meta);
-    item.append(badge, content);
+    content.append(
+      name,
+      meta
+    );
+
+    item.append(
+      badge,
+      content
+    );
+
     list.append(item);
   }
 }
 
-async function loadDocuments(showMessage = false) {
+
+/* =====================================================
+   6. CARGAR INVENTARIO DOCUMENTAL
+   ===================================================== */
+
+async function loadDocuments(
+  showMessage = false
+) {
+
   const button = $("refresh-docs");
 
   if (button) {
@@ -259,6 +456,7 @@ async function loadDocuments(showMessage = false) {
   }
 
   try {
+
     const result = await api.documents();
 
     state.documents = Array.isArray(
@@ -267,30 +465,51 @@ async function loadDocuments(showMessage = false) {
       ? result.documents
       : [];
 
+
     const count = state.documents.length;
 
-    $("doc-count").textContent = String(count);
-    $("stat-documents").textContent = String(count);
+    $("doc-count").textContent =
+      String(count);
+
+    $("stat-documents").textContent =
+      String(count);
+
+
+    // Estado del índice documental.
+
+    const configured = Boolean(
+      result.vector_store_configured
+    );
 
     $("index-status").textContent =
-      result.vector_store_configured
+      configured
         ? `${count} archivos en el índice`
         : "Índice aún no creado";
 
     $("index-dot").className =
-      result.vector_store_configured
+      configured
         ? "status-indicator ready"
         : "status-indicator";
 
+
     renderDocuments();
 
+
     if (showMessage) {
+
       notify(
-        "Listado documental actualizado.",
+        "Listado documental actualizado correctamente.",
         "success"
       );
     }
+
   } catch (error) {
+
+    console.error(
+      "Error cargando documentos:",
+      error
+    );
+
     $("index-status").textContent =
       "No se pudo cargar el inventario";
 
@@ -305,13 +524,13 @@ async function loadDocuments(showMessage = false) {
       )
     );
 
-    notify(error.message, "error");
-
-    console.error(
-      "Error en /api/documents:",
-      error
+    notify(
+      error.message,
+      "error"
     );
+
   } finally {
+
     if (button) {
       button.disabled = false;
     }
@@ -320,76 +539,108 @@ async function loadDocuments(showMessage = false) {
 
 
 /* =====================================================
-   COMPROBAR ESTADO DEL SERVIDOR
+   7. ESTADO DEL SERVIDOR
    ===================================================== */
 
 async function checkHealth() {
+
   try {
+
     const result = await api.health();
 
-    $("health").className = result.configured
-      ? "health-pill ready"
-      : "health-pill failed";
+    const configured = Boolean(
+      result.configured
+    );
+
+    $("health").className =
+      configured
+        ? "health-pill ready"
+        : "health-pill failed";
 
     $("health-label").textContent =
-      result.configured
+      configured
         ? "Servidor configurado"
         : "Configuración pendiente";
 
   } catch (error) {
+
+    console.error(
+      "Error comprobando servidor:",
+      error
+    );
+
     $("health").className =
       "health-pill failed";
 
     $("health-label").textContent =
       "Sin conexión al servidor";
 
-    notify(error.message, "error");
-
-    console.error(
-      "Error en /api/health:",
-      error
+    notify(
+      error.message,
+      "error"
     );
   }
 }
 
 
 /* =====================================================
-   CONTROLES RAG
+   8. MODO FILE SEARCH (RAG)
    ===================================================== */
 
 function updateMode() {
-  const enabled = $("use-search").checked;
 
-  $("stat-mode").textContent = enabled
-    ? "RAG activado"
-    : "Sin RAG";
+  const enabled =
+    $("use-search").checked;
 
-  $("mode-tag").textContent = enabled
-    ? "● File Search activo"
-    : "○ Sin File Search";
+
+  $("stat-mode").textContent =
+    enabled
+      ? "RAG activado"
+      : "Sin RAG";
+
+
+  $("mode-tag").textContent =
+    enabled
+      ? "● File Search activo"
+      : "○ Sin File Search";
+
 
   $("mode-tag").classList.toggle(
     "off",
     !enabled
   );
 
-  $("mode-note").textContent = enabled
-    ? "Búsqueda documental habilitada"
-    : "Sin acceso al índice documental";
+
+  $("mode-note").textContent =
+    enabled
+      ? "Búsqueda documental habilitada"
+      : "Sin acceso al índice documental";
 }
+
+
+/* =====================================================
+   9. CONTADOR Y VALIDACIÓN DE PREGUNTAS
+   ===================================================== */
 
 function updateCounter() {
+
+  const question = $("question");
+
   $("char-count").textContent =
-    `${$("question").value.length} / 3000`;
+    `${question.value.length} / 3000`;
 }
 
+
 function getQuestion() {
-  const text = $("question").value.trim();
+
+  const text =
+    $("question").value.trim();
 
   if (
     text.length < 3 ||
     text.length > 3000
   ) {
+
     notify(
       "La pregunta debe tener entre 3 y 3000 caracteres.",
       "error"
@@ -405,42 +656,57 @@ function getQuestion() {
 
 
 /* =====================================================
-   FUENTES DOCUMENTALES
+   10. FUENTES DOCUMENTALES
    ===================================================== */
 
-function sourcesBlock(sources, usedRag) {
+function sourcesBlock(
+  sources,
+  usedRag
+) {
+
   const box = make(
     "div",
     "sources-block"
   );
 
-  box.append(
-    make(
-      "div",
-      "sources-title",
-      usedRag
-        ? `Fuentes verificables: ${sources.length}`
-        : "Fuentes documentales"
-    )
+  const title = make(
+    "div",
+    "sources-title",
+    usedRag
+      ? `Fuentes verificables: ${sources.length}`
+      : "Fuentes documentales"
   );
+
+  box.append(title);
+
 
   const list = make(
     "div",
     "sources-list"
   );
 
-  if (!usedRag || sources.length === 0) {
+
+  if (
+    !usedRag ||
+    sources.length === 0
+  ) {
+
+    const text = usedRag
+      ? "No se devolvieron citas verificables."
+      : "File Search desactivado: no se consultó el índice.";
+
     list.append(
       make(
         "span",
         "source-text",
-        usedRag
-          ? "No se devolvieron citas verificables."
-          : "File Search desactivado: no se consultó el índice."
+        text
       )
     );
+
   } else {
+
     for (const source of sources) {
+
       const href = driveLink(source);
 
       const chip = make(
@@ -449,10 +715,15 @@ function sourcesBlock(sources, usedRag) {
         `↗ ${source.name || "Documento"}`
       );
 
+
       if (href) {
+
         chip.href = href;
+
         chip.target = "_blank";
-        chip.rel = "noopener noreferrer";
+
+        chip.rel =
+          "noopener noreferrer";
       }
 
       list.append(chip);
@@ -466,10 +737,11 @@ function sourcesBlock(sources, usedRag) {
 
 
 /* =====================================================
-   COPIAR RESPUESTAS
+   11. COPIAR RESPUESTAS
    ===================================================== */
 
 function copyButton(value) {
+
   const button = make(
     "button",
     "message-action",
@@ -478,18 +750,24 @@ function copyButton(value) {
 
   button.type = "button";
 
+
   button.addEventListener(
     "click",
     async () => {
+
       try {
+
         await navigator.clipboard.writeText(
           value
         );
 
-        button.textContent = "✓ Copiado";
+        button.textContent =
+          "✓ Copiado";
+
       } catch {
+
         notify(
-          "El navegador no permitió copiar. Selecciona el texto manualmente.",
+          "No se pudo copiar automáticamente.",
           "error"
         );
       }
@@ -501,55 +779,77 @@ function copyButton(value) {
 
 
 /* =====================================================
-   MENSAJES DEL CHAT
+   12. MENSAJES DEL CHAT
    ===================================================== */
 
 function renderMessage(entry) {
-  const isUser = entry.role === "user";
+
+  const isUser =
+    entry.role === "user";
 
   const row = make(
     "article",
-    `chat-message ${isUser ? "user" : "assistant"}`
+    `chat-message ${
+      isUser ? "user" : "assistant"
+    }`
   );
 
-  row.append(
-    make(
-      "div",
-      "message-avatar",
-      isUser ? "TÚ" : "AI"
-    )
+
+  const avatar = make(
+    "div",
+    "message-avatar",
+    isUser ? "TÚ" : "AI"
   );
+
+  avatar.setAttribute(
+    "aria-hidden",
+    "true"
+  );
+
+  row.append(avatar);
+
 
   const body = make(
     "div",
     "message-body"
   );
 
-  body.append(
-    make(
-      "div",
-      "message-name",
-      isUser
-        ? "TU PREGUNTA"
-        : entry.withSearch
-          ? "ARCHIVO TIC IA · RAG"
-          : "ARCHIVO TIC IA · SIN RAG"
-    )
-  );
+
+  const name = isUser
+    ? "TU PREGUNTA"
+    : entry.withSearch
+      ? "ARCHIVO TIC IA · RAG"
+      : "ARCHIVO TIC IA · SIN RAG";
+
 
   body.append(
     make(
       "div",
-      `message-bubble ${entry.error ? "error" : ""}`,
-      entry.text
+      "message-name",
+      name
     )
   );
+
+
+  const bubble = make(
+    "div",
+    `message-bubble ${
+      entry.error ? "error" : ""
+    }`,
+    entry.text
+  );
+
+  body.append(bubble);
+
+
+  // Fuentes y botón copiar.
 
   if (
     !isUser &&
     !entry.error &&
     !entry.pending
   ) {
+
     body.append(
       sourcesBlock(
         entry.sources || [],
@@ -569,6 +869,7 @@ function renderMessage(entry) {
     body.append(tools);
   }
 
+
   row.append(body);
 
   return row;
@@ -576,10 +877,11 @@ function renderMessage(entry) {
 
 
 /* =====================================================
-   COMPARADOR RAG VS SIN RAG
+   13. COMPARADOR RAG VS SIN RAG
    ===================================================== */
 
 function renderComparison(entry) {
+
   const wrapper = make(
     "section",
     "comparison-result"
@@ -587,8 +889,11 @@ function renderComparison(entry) {
 
   wrapper.setAttribute(
     "aria-label",
-    "Comparador con y sin RAG"
+    "Comparación con y sin RAG"
   );
+
+
+  // Encabezado.
 
   const head = make(
     "div",
@@ -602,6 +907,7 @@ function renderComparison(entry) {
       "AI"
     )
   );
+
 
   const label = make("div");
 
@@ -622,12 +928,17 @@ function renderComparison(entry) {
   );
 
   head.append(label);
+
   wrapper.append(head);
+
+
+  // Tarjetas comparativas.
 
   const grid = make(
     "div",
     "comparison-grid"
   );
+
 
   const options = [
     {
@@ -644,11 +955,16 @@ function renderComparison(entry) {
     }
   ];
 
+
   for (const option of options) {
+
     const card = make(
       "article",
-      `comparison-card ${option.rag ? "rag" : "plain"}`
+      `comparison-card ${
+        option.rag ? "rag" : "plain"
+      }`
     );
+
 
     const top = make(
       "div",
@@ -671,6 +987,7 @@ function renderComparison(entry) {
       )
     );
 
+
     const body = make(
       "div",
       "comparison-card-body"
@@ -679,12 +996,16 @@ function renderComparison(entry) {
     body.append(
       make(
         "div",
-        `comparison-answer ${option.value.error ? "error" : ""}`,
+        `comparison-answer ${
+          option.value.error ? "error" : ""
+        }`,
         option.value.text
       )
     );
 
+
     if (!option.value.error) {
+
       body.append(
         sourcesBlock(
           option.value.sources || [],
@@ -699,22 +1020,27 @@ function renderComparison(entry) {
       );
     }
 
-    card.append(top, body);
+    card.append(
+      top,
+      body
+    );
+
     grid.append(card);
   }
 
   wrapper.append(grid);
 
-  // Tabla comparativa solicitada por el profesor.
+
+  // Tabla comparativa.
 
   const metrics = make(
     "div",
     "comparison-metrics"
   );
 
-  const table = document.createElement(
-    "table"
-  );
+  const table =
+    document.createElement("table");
+
 
   table.append(
     make(
@@ -724,19 +1050,20 @@ function renderComparison(entry) {
     )
   );
 
-  const thead = document.createElement(
-    "thead"
-  );
 
-  const trHead = document.createElement(
-    "tr"
-  );
+  const thead =
+    document.createElement("thead");
+
+  const headerRow =
+    document.createElement("tr");
+
 
   for (const title of [
     "Criterio",
     "Sin RAG",
     "Con RAG"
   ]) {
+
     const th = make(
       "th",
       "",
@@ -744,15 +1071,18 @@ function renderComparison(entry) {
     );
 
     th.scope = "col";
-    trHead.append(th);
+
+    headerRow.append(th);
   }
 
-  thead.append(trHead);
+  thead.append(headerRow);
+
   table.append(thead);
 
-  const tbody = document.createElement(
-    "tbody"
-  );
+
+  const tbody =
+    document.createElement("tbody");
+
 
   const rows = [
     [
@@ -767,7 +1097,9 @@ function renderComparison(entry) {
       "Sin búsqueda",
       entry.rag.error
         ? "No disponibles"
-        : `${(entry.rag.sources || []).length} citas`
+        : `${
+            (entry.rag.sources || []).length
+          } citas`
     ],
     [
       "Precisión",
@@ -776,37 +1108,46 @@ function renderComparison(entry) {
     ]
   ];
 
+
   for (const cells of rows) {
-    const tr = document.createElement(
-      "tr"
+
+    const row =
+      document.createElement("tr");
+
+
+    cells.forEach(
+      (value, index) => {
+
+        const cell = make(
+          index === 0 ? "th" : "td",
+          "",
+          value
+        );
+
+        if (index === 0) {
+          cell.scope = "row";
+        }
+
+        row.append(cell);
+      }
     );
 
-    cells.forEach((value, i) => {
-      const cell = make(
-        i === 0 ? "th" : "td",
-        "",
-        value
-      );
-
-      if (i === 0) {
-        cell.scope = "row";
-      }
-
-      tr.append(cell);
-    });
-
-    tbody.append(tr);
+    tbody.append(row);
   }
 
+
   table.append(tbody);
+
   metrics.append(table);
+
   wrapper.append(metrics);
+
 
   wrapper.append(
     make(
       "p",
       "comparison-note",
-      "RAG puede mejorar la evidencia, pero no garantiza precisión. Verifica las fuentes originales."
+      "RAG puede mejorar la evidencia documental, pero no garantiza precisión. Verifica las fuentes originales."
     )
   );
 
@@ -815,24 +1156,30 @@ function renderComparison(entry) {
 
 
 /* =====================================================
-   PANTALLA DE BIENVENIDA
+   14. PANTALLA DE BIENVENIDA
    ===================================================== */
 
 function renderWelcome(conversation) {
-  const template = $("empty-state-template");
+
+  const template =
+    $("empty-state-template");
+
 
   if (
     template?.content?.childElementCount
   ) {
+
     conversation.append(
       template.content.cloneNode(true)
     );
+
   } else if (originalWelcome) {
+
     conversation.append(
       originalWelcome.cloneNode(true)
     );
+
   } else {
-    // Respaldo para evitar que se detenga la app.
 
     const fallback = make(
       "div",
@@ -866,18 +1213,22 @@ function renderWelcome(conversation) {
     conversation.append(fallback);
   }
 
-  // Activar botones de preguntas sugeridas.
+
+  // Activar preguntas sugeridas.
 
   conversation
     .querySelectorAll("[data-prompt]")
     .forEach((button) => {
+
       button.addEventListener(
         "click",
         () => {
+
           $("question").value =
             button.dataset.prompt || "";
 
           updateCounter();
+
           $("question").focus();
         }
       );
@@ -886,30 +1237,50 @@ function renderWelcome(conversation) {
 
 
 /* =====================================================
-   ACTUALIZAR CONVERSACION
+   15. RENDERIZAR CONVERSACIÓN
    ===================================================== */
 
-function renderConversation(pending = null) {
+function renderConversation(
+  pending = null
+) {
+
   const area = $("conversation");
 
   area.replaceChildren();
 
+
   if (
-    !state.messages.length &&
+    state.messages.length === 0 &&
     !pending
   ) {
+
     renderWelcome(area);
   }
 
+
+  // Historial temporal.
+
   for (const entry of state.messages) {
-    area.append(
-      entry.role === "comparison"
-        ? renderComparison(entry)
-        : renderMessage(entry)
-    );
+
+    if (entry.role === "comparison") {
+
+      area.append(
+        renderComparison(entry)
+      );
+
+    } else {
+
+      area.append(
+        renderMessage(entry)
+      );
+    }
   }
 
+
+  // Mensaje de carga.
+
   if (pending) {
+
     area.append(
       renderMessage({
         role: "assistant",
@@ -922,92 +1293,142 @@ function renderConversation(pending = null) {
     );
   }
 
-  $("stat-queries").textContent = String(
-    state.messages.filter(
-      (item) => item.role === "user"
-    ).length
-  );
+
+  // Número de preguntas.
+
+  const questions = state.messages.filter(
+    (item) => item.role === "user"
+  ).length;
+
+  $("stat-queries").textContent =
+    String(questions);
+
+
+  // Exportación disponible si hay historial.
 
   $("export-chat").disabled =
     state.messages.length === 0;
+
+
+  // Desplazar hacia el último mensaje.
 
   area.scrollTop = area.scrollHeight;
 }
 
 
 /* =====================================================
-   CONTROLES DE CONSULTA
+   16. BLOQUEAR CONTROLES DURANTE CONSULTA
    ===================================================== */
 
 function setBusy(value) {
+
   state.busy = value;
 
-  [
+  const controls = [
     "ask",
     "compare",
     "question",
     "new-chat",
     "use-search"
-  ].forEach((id) => {
-    if ($(id)) {
-      $(id).disabled = value;
+  ];
+
+
+  controls.forEach((id) => {
+
+    const element = $(id);
+
+    if (element) {
+
+      element.disabled = value;
     }
   });
 }
 
+
+/* =====================================================
+   17. LIMPIAR CAMPO DE CONSULTA
+   ===================================================== */
+
 function clearInput() {
+
   $("question").value = "";
 
   updateCounter();
+
   clearNotice();
 }
 
 
 /* =====================================================
-   CONSULTA NORMAL A OPENAI
+   18. CONSULTA NORMAL A OPENAI
    ===================================================== */
 
 async function ask() {
+
   if (state.busy) return;
+
 
   const question = getQuestion();
 
   if (!question) return;
 
+
   const withSearch =
     $("use-search").checked;
+
 
   state.messages.push({
     role: "user",
     text: question
   });
 
+
   clearInput();
+
   setBusy(true);
+
 
   renderConversation({
     withSearch
   });
 
+
   try {
+
+    // Solicitud al backend.
+    //
+    // Localhost -> FastAPI local.
+    // GitHub Pages -> Vercel.
+
     const data = await api.ask(
       question,
       withSearch
     );
+
 
     state.messages.push({
       role: "assistant",
       withSearch,
       text: data.answer ||
         "La API devolvió una respuesta vacía.",
-      sources: Array.isArray(data.sources)
+      sources: Array.isArray(
+        data.sources
+      )
         ? data.sources
         : []
     });
 
+
     renderConversation();
 
   } catch (error) {
+
+    console.error(
+      "Error al consultar OpenAI:",
+      error
+    );
+
+
     state.messages.push({
       role: "assistant",
       withSearch,
@@ -1015,51 +1436,74 @@ async function ask() {
       text: error.message
     });
 
+
     renderConversation();
+
 
     notify(
       error.message,
       "error"
     );
+
   } finally {
+
     setBusy(false);
+
     $("question").focus();
   }
 }
 
 
 /* =====================================================
-   COMPARACION AUTOMATICA RAG
+   19. COMPARACIÓN AUTOMÁTICA RAG
    ===================================================== */
 
 async function compareRag() {
+
   if (state.busy) return;
+
 
   const question = getQuestion();
 
   if (!question) return;
+
 
   state.messages.push({
     role: "user",
     text: question
   });
 
+
   clearInput();
+
   setBusy(true);
+
 
   renderConversation({
     withSearch: true,
     comparison: true
   });
 
+
   try {
+
+    // Ejecutar dos solicitudes independientes.
+    //
+    // false = sin RAG
+    // true  = con RAG
+
     const results = await Promise.allSettled([
       api.ask(question, false),
       api.ask(question, true)
     ]);
 
+
     const normalize = (result) => {
-      if (result.status === "fulfilled") {
+
+      if (
+        result.status === "fulfilled"
+      ) {
+
         return {
           error: false,
           text: result.value.answer ||
@@ -1072,16 +1516,19 @@ async function compareRag() {
         };
       }
 
+
       return {
         error: true,
         text: result.reason?.message ||
-          "No se completó.",
+          "No se pudo completar la consulta.",
         sources: []
       };
     };
 
+
     const [plain, rag] =
       results.map(normalize);
+
 
     state.messages.push({
       role: "comparison",
@@ -1089,18 +1536,31 @@ async function compareRag() {
       rag
     });
 
+
     renderConversation();
 
+
+    const hasErrors =
+      plain.error || rag.error;
+
+
     notify(
-      plain.error || rag.error
-        ? "La comparación terminó con errores. Revisa cada respuesta."
+      hasErrors
+        ? "La comparación terminó con errores. Revisa ambas respuestas."
         : "Comparación terminada correctamente.",
-      plain.error || rag.error
+      hasErrors
         ? "error"
         : "success"
     );
 
   } catch (error) {
+
+    console.error(
+      "Error en comparador RAG:",
+      error
+    );
+
+
     state.messages.push({
       role: "assistant",
       withSearch: true,
@@ -1108,83 +1568,132 @@ async function compareRag() {
       error: true
     });
 
+
     renderConversation();
+
 
     notify(
       error.message,
       "error"
     );
+
   } finally {
+
     setBusy(false);
+
     $("question").focus();
   }
 }
 
 
 /* =====================================================
-   SINCRONIZAR GOOGLE DRIVE
+   20. SINCRONIZAR GOOGLE DRIVE
    ===================================================== */
 
 async function sync() {
-  if (state.syncing) return;
 
-  if (
-    !window.confirm(
-      "¿Sincronizar tus documentos autorizados de Google Drive?"
-    )
-  ) {
+  // La sincronización es exclusiva de localhost.
+  // Nunca realizarla desde GitHub Pages.
+
+  if (!IS_LOCAL) {
+
+    notify(
+      "La sincronización de Google Drive está disponible únicamente desde localhost.",
+      "error"
+    );
+
     return;
   }
 
+
+  if (state.syncing) return;
+
+
+  const confirmed = window.confirm(
+    "¿Deseas sincronizar tus documentos autorizados de Google Drive?"
+  );
+
+
+  if (!confirmed) return;
+
+
   state.syncing = true;
 
+
   $("sync").disabled = true;
+
   $("sync-label").textContent =
     "Sincronizando...";
 
+
   notify(
-    "Conectando con Drive e indexando archivos. Puede tardar unos minutos."
+    "Conectando con Google Drive e indexando archivos. Esto puede tardar unos minutos."
   );
 
+
   try {
+
     const result = await api.sync();
+
+
+    // Refrescar inventario.
 
     await loadDocuments();
 
-    const stats = result.stats || {};
 
-    const nErrors = Array.isArray(
+    const stats =
+      result.stats || result || {};
+
+
+    const errors = Array.isArray(
       stats.errors
     )
       ? stats.errors.length
-      : 0;
+      : Number(stats.errors || 0);
+
+
+    const summary = [
+      `${stats.added || 0} nuevos`,
+      `${stats.updated || 0} actualizados`,
+      `${stats.removed || 0} eliminados`,
+      `${stats.unchanged || 0} sin cambios`,
+      `${errors} errores`
+    ].join(", ");
+
 
     notify(
-      `Sincronización: ${stats.added || 0} nuevos, ` +
-      `${stats.updated || 0} actualizados, ` +
-      `${stats.removed || 0} eliminados, ` +
-      `${stats.unchanged || 0} sin cambios, ` +
-      `${nErrors} errores.`,
-      nErrors
+      `Sincronización finalizada: ${summary}.`,
+      errors
         ? "error"
         : "success"
     );
 
-    if (nErrors) {
+
+    if (errors) {
+
       console.warn(
-        "Errores de sincronización:",
+        "Errores durante la sincronización:",
         stats.errors
       );
     }
 
   } catch (error) {
+
+    console.error(
+      "Error de sincronización:",
+      error
+    );
+
+
     notify(
       error.message,
       "error"
     );
 
   } finally {
+
     state.syncing = false;
+
 
     $("sync").disabled = false;
 
@@ -1195,75 +1704,104 @@ async function sync() {
 
 
 /* =====================================================
-   EXPORTAR CONVERSACION A TXT
+   21. EXPORTAR CONVERSACIÓN A TXT
    ===================================================== */
 
 function exportChat() {
+
   if (!state.messages.length) return;
+
 
   const lines = [
     "ARCHIVO TIC IA - CONVERSACIÓN",
-    new Date().toLocaleString("es-MX"),
+    `Fecha: ${new Date().toLocaleString("es-MX")}`,
     ""
   ];
+
 
   function addAnswer(
     label,
     result,
     withSearch
   ) {
+
     lines.push(
       label,
       result.text,
       ""
     );
 
+
     if (withSearch) {
-      lines.push("Fuentes:");
+
+      lines.push("Fuentes documentales:");
+
 
       const sources =
         result.sources || [];
 
+
       if (!sources.length) {
+
         lines.push(
           "Sin citas verificables."
         );
+
       } else {
+
         sources.forEach((source) => {
+
           const link = driveLink(source);
 
           lines.push(
-            `- ${source.name || "Documento"}${link ? `: ${link}` : ""}`
+            `- ${source.name || "Documento"}${
+              link ? `: ${link}` : ""
+            }`
           );
         });
       }
+
 
       lines.push("");
     }
   }
 
+
   for (const entry of state.messages) {
+
     if (entry.role === "user") {
+
       lines.push(
         "PREGUNTA:",
         entry.text,
         ""
       );
 
-    } else if (entry.role === "comparison") {
+    } else if (
+      entry.role === "comparison"
+    ) {
+
       addAnswer(
-        "SIN RAG:",
+        "COMPARACIÓN - SIN RAG:",
         entry.plain,
         false
       );
 
+
       addAnswer(
-        "CON RAG:",
+        "COMPARACIÓN - CON RAG:",
         entry.rag,
         true
       );
 
+
+      lines.push(
+        "Precisión: verificar manualmente con los documentos originales.",
+        ""
+      );
+
     } else {
+
       addAnswer(
         entry.withSearch
           ? "RESPUESTA CON RAG:"
@@ -1273,11 +1811,15 @@ function exportChat() {
       );
     }
 
+
     lines.push(
       "---------------------------",
       ""
     );
   }
+
+
+  // Crear archivo TXT.
 
   const blob = new Blob(
     [
@@ -1289,33 +1831,115 @@ function exportChat() {
     }
   );
 
-  const href = URL.createObjectURL(blob);
 
-  const a = document.createElement("a");
+  const href =
+    URL.createObjectURL(blob);
 
-  a.href = href;
 
-  a.download =
-    `archivo-tic-ia-${new Date().toISOString().slice(0, 10)}.txt`;
+  const link =
+    document.createElement("a");
 
-  document.body.append(a);
-  a.click();
-  a.remove();
+
+  link.href = href;
+
+  link.download =
+    `archivo-tic-ia-${
+      new Date().toISOString().slice(0, 10)
+    }.txt`;
+
+
+  document.body.append(link);
+
+  link.click();
+
+  link.remove();
+
 
   setTimeout(() => {
+
     URL.revokeObjectURL(href);
+
   }, 1000);
 }
 
 
 /* =====================================================
-   INICIALIZACION
+   22. ADAPTAR INTERFAZ SEGÚN ENTORNO
+   ===================================================== */
+
+function configureEnvironment() {
+
+  if (IS_LOCAL) {
+
+    // En localhost dejamos habilitada
+    // la sincronización de Google Drive.
+
+    console.info(
+      "Archivo TIC IA: entorno local"
+    );
+
+    return;
+  }
+
+
+  // En GitHub Pages se desactiva
+  // la sincronización de Drive.
+
+  const syncButton = $("sync");
+
+  if (syncButton) {
+
+    syncButton.hidden = true;
+    syncButton.disabled = true;
+  }
+
+
+  // Ocultar la ayuda original y mostrar
+  // una descripción del entorno remoto.
+
+  const hint = document.querySelector(
+    ".sidebar-hint"
+  );
+
+  if (hint) {
+
+    hint.textContent =
+      "Los documentos se sincronizan desde la aplicación local. Aquí puedes consultar el índice publicado.";
+  }
+
+
+  // El botón de actualizar documentos
+  // seguirá funcionando desde Vercel.
+
+  const refresh = $("refresh-docs");
+
+  if (refresh) {
+
+    refresh.title =
+      "Actualizar documentos desde Vercel";
+
+    refresh.setAttribute(
+      "aria-label",
+      "Actualizar documentos desde Vercel"
+    );
+  }
+
+
+  console.info(
+    "Archivo TIC IA: GitHub Pages conectado a Vercel."
+  );
+}
+
+
+/* =====================================================
+   23. INICIALIZACIÓN DE LA APLICACIÓN
    ===================================================== */
 
 function initialize() {
-  // Detectar archivos HTML incompatibles.
 
-  const ids = [
+  // Verificar compatibilidad HTML / JS.
+
+  const requiredIds = [
     "health",
     "health-label",
     "documents",
@@ -1343,53 +1967,74 @@ function initialize() {
     "doc-type"
   ];
 
-  const missing = ids.filter(
+
+  const missing = requiredIds.filter(
     (id) => !$(id)
   );
 
-  if (missing.length) {
+
+  if (missing.length > 0) {
+
     console.error(
-      "Faltan elementos HTML requeridos:",
-      missing.join(", ")
+      "Faltan elementos del HTML:",
+      missing
     );
 
-    const status = $("health-label");
 
-    if (status) {
-      status.textContent =
-        "Error de interfaz: HTML y JS incompatibles";
+    const healthLabel =
+      $("health-label");
+
+
+    if (healthLabel) {
+
+      healthLabel.textContent =
+        "Error: HTML y JavaScript incompatibles";
     }
 
     return;
   }
 
-  // Formulario del chat.
+
+  // Configuración local / remota.
+
+  configureEnvironment();
+
+
+  // Enviar pregunta.
 
   $("ask-form").addEventListener(
     "submit",
     (event) => {
+
       event.preventDefault();
-      ask();
+
+      void ask();
     }
   );
+
 
   // Comparador RAG.
 
   $("compare").addEventListener(
     "click",
-    compareRag
+    () => void compareRag()
   );
 
-  // Campo de pregunta.
+
+  // Campo de texto.
 
   $("question").addEventListener(
     "input",
     updateCounter
   );
 
+
+  // Ctrl + Enter para enviar.
+
   $("question").addEventListener(
     "keydown",
     (event) => {
+
       if (
         event.key === "Enter" &&
         (
@@ -1397,44 +2042,57 @@ function initialize() {
           event.metaKey
         )
       ) {
+
         event.preventDefault();
-        ask();
+
+        void ask();
       }
     }
   );
 
-  // Interruptor File Search.
+
+  // Cambiar modo RAG.
 
   $("use-search").addEventListener(
     "change",
     updateMode
   );
 
-  // Filtros documentales.
+
+  // Buscar documentos.
 
   $("doc-search").addEventListener(
     "input",
     renderDocuments
   );
 
+
+  // Filtrar formato.
+
   $("doc-type").addEventListener(
     "change",
     renderDocuments
   );
 
-  // Refrescar documentos.
+
+  // Actualizar inventario.
 
   $("refresh-docs").addEventListener(
     "click",
-    () => loadDocuments(true)
+    () => void loadDocuments(true)
   );
 
-  // Sincronizar Google Drive.
 
-  $("sync").addEventListener(
-    "click",
-    sync
-  );
+  // Sincronización.
+
+  if (IS_LOCAL) {
+
+    $("sync").addEventListener(
+      "click",
+      () => void sync()
+    );
+  }
+
 
   // Exportar conversación.
 
@@ -1443,39 +2101,53 @@ function initialize() {
     exportChat
   );
 
+
   // Nueva conversación.
 
   $("new-chat").addEventListener(
     "click",
     () => {
+
       if (state.busy) return;
+
 
       state.messages = [];
 
       clearInput();
+
       renderConversation();
 
       $("question").focus();
     }
   );
 
-  // Preparar interfaz.
+
+  // Preparar interfaz inicial.
 
   renderConversation();
+
   updateMode();
+
   updateCounter();
 
-  // Consultas independientes al backend.
-  // Si una falla, la otra continúa.
+
+  // Consultar backend.
+  // Ambas solicitudes son independientes.
 
   void checkHealth();
+
   void loadDocuments();
 }
 
 
-// Esperar al documento HTML si todavía está cargando.
+/* =====================================================
+   24. INICIAR AL CARGAR EL DOCUMENTO
+   ===================================================== */
 
-if (document.readyState === "loading") {
+if (
+  document.readyState === "loading"
+) {
+
   document.addEventListener(
     "DOMContentLoaded",
     initialize,
@@ -1483,6 +2155,8 @@ if (document.readyState === "loading") {
       once: true
     }
   );
+
 } else {
+
   initialize();
 }

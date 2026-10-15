@@ -1,21 +1,34 @@
 
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
   <meta name="theme-color" content="#101d35">
-  <meta name="description"
-        content="Archivo TIC IA - Agente documental con Google Drive y OpenAI">
+
+  <meta
+    name="description"
+    content="Archivo TIC IA - Agente documental con Google Drive, OpenAI y File Search"
+  >
 
   <title>Archivo TIC IA | Agente documental</title>
 
-  <link rel="stylesheet"
-        href="./assets/css/styles.css?v=20261015-4">
+  <!-- Hoja de estilos principal -->
+  <link
+    rel="stylesheet"
+    href="./assets/css/styles.css?v=20261015-6"
+  >
 </head>
 
 <body>
 
+  <!-- Aviso visible únicamente si falla CSS -->
   <div class="css-warning" role="alert">
     No se cargó styles.css.
     Comprueba la ruta assets/css/styles.css.
@@ -23,41 +36,76 @@
 
   <div class="workspace">
 
-    <!-- PANEL LATERAL -->
-    <aside class="sidebar" aria-label="Biblioteca documental">
+    <!-- ===================================== -->
+    <!-- PANEL LATERAL                        -->
+    <!-- ===================================== -->
+
+    <aside
+      class="sidebar"
+      aria-label="Biblioteca documental"
+    >
 
       <div class="sidebar-top">
-        <div class="brand-mark" aria-hidden="true">AI</div>
+
+        <div
+          class="brand-mark"
+          aria-hidden="true"
+        >
+          AI
+        </div>
 
         <div>
           <div class="brand-name">
             Archivo TIC <span>IA</span>
           </div>
+
           <div class="brand-caption">
             AGENTE DOCUMENTAL · 2.3
           </div>
         </div>
+
       </div>
 
-      <button type="button"
-              id="new-chat"
-              class="btn-new-chat">
-        <span class="plus-sign">＋</span>
+      <!-- Nueva conversación -->
+      <button
+        type="button"
+        id="new-chat"
+        class="btn-new-chat"
+      >
+        <span class="plus-sign" aria-hidden="true">
+          ＋
+        </span>
+
         Nueva conversación
       </button>
 
       <div class="sidebar-divider"></div>
 
+      <!-- Biblioteca -->
       <div class="section-heading">
+
         <div>
-          <span class="section-kicker">BIBLIOTECA</span>
+          <span class="section-kicker">
+            BIBLIOTECA
+          </span>
+
           <h2>Mis documentos</h2>
         </div>
 
-        <span class="count-pill" id="doc-count">0</span>
+        <span
+          class="count-pill"
+          id="doc-count"
+        >
+          0
+        </span>
+
       </div>
 
-      <label class="visually-hidden" for="doc-search">
+      <!-- Buscar documentos -->
+      <label
+        class="visually-hidden"
+        for="doc-search"
+      >
         Buscar documentos
       </label>
 
@@ -66,69 +114,117 @@
         class="doc-filter-input"
         type="search"
         placeholder="Buscar documentos..."
-        autocomplete="off">
+        autocomplete="off"
+      >
 
-      <label class="visually-hidden" for="doc-type">
+      <!-- Filtrar por formato -->
+      <label
+        class="visually-hidden"
+        for="doc-type"
+      >
         Tipo de documento
       </label>
 
-      <select id="doc-type" class="doc-type-select">
-        <option value="all">Todos los formatos</option>
-        <option value="pdf">PDF</option>
-        <option value="txt">TXT</option>
-        <option value="docs">Google Docs</option>
+      <select
+        id="doc-type"
+        class="doc-type-select"
+      >
+        <option value="all">
+          Todos los formatos
+        </option>
+
+        <option value="pdf">
+          PDF
+        </option>
+
+        <option value="txt">
+          TXT
+        </option>
+
+        <option value="docs">
+          Google Docs
+        </option>
       </select>
 
-      <div id="documents"
-           class="document-list"
-           aria-live="polite">
-
+      <!-- Listado de archivos -->
+      <div
+        id="documents"
+        class="document-list"
+        aria-live="polite"
+      >
         <div class="docs-placeholder">
           Cargando biblioteca...
         </div>
       </div>
 
+      <!-- Acciones -->
       <div class="sidebar-actions">
 
-        <button type="button"
-                id="sync"
-                class="btn-sync">
-          <span id="sync-symbol">↻</span>
-          <span id="sync-label">Sincronizar Drive</span>
+        <!-- Disponible únicamente en localhost -->
+        <button
+          type="button"
+          id="sync"
+          class="btn-sync"
+        >
+          <span
+            id="sync-symbol"
+            aria-hidden="true"
+          >
+            ↻
+          </span>
+
+          <span id="sync-label">
+            Sincronizar Drive
+          </span>
         </button>
 
-        <button type="button"
-                id="refresh-docs"
-                class="btn-refresh"
-                title="Actualizar documentos"
-                aria-label="Actualizar documentos">
+        <!-- Disponible local y remotamente -->
+        <button
+          type="button"
+          id="refresh-docs"
+          class="btn-refresh"
+          title="Actualizar documentos"
+          aria-label="Actualizar documentos"
+        >
           ↺
         </button>
 
       </div>
 
       <p class="sidebar-hint">
-        Sincroniza tus documentos autorizados desde Google
-        Drive para mantener actualizado el índice de OpenAI.
+        Sincroniza tus documentos autorizados
+        desde Google Drive para mantener actualizado
+        el índice documental de OpenAI.
       </p>
 
+      <!-- Estado del índice -->
       <div class="sidebar-footer">
-        <span id="index-dot"
-              class="status-indicator"></span>
+
+        <span
+          id="index-dot"
+          class="status-indicator"
+          aria-hidden="true"
+        ></span>
 
         <span id="index-status">
           Comprobando índice...
         </span>
+
       </div>
 
     </aside>
 
-    <!-- ÁREA PRINCIPAL -->
+    <!-- ===================================== -->
+    <!-- ÁREA PRINCIPAL                       -->
+    <!-- ===================================== -->
+
     <main class="main-area">
 
+      <!-- Encabezado -->
       <header class="topbar">
 
         <div class="topbar-left">
+
           <span class="kicker">
             INTELIGENCIA ARTIFICIAL APLICADA A LAS TIC
           </span>
@@ -142,76 +238,138 @@
             Pregunta, analiza y compara información
             de tus propios documentos.
           </p>
+
         </div>
 
-        <div id="health"
-             class="health-pill"
-             role="status">
+        <!-- Estado del backend -->
+        <div
+          id="health"
+          class="health-pill"
+          role="status"
+          aria-live="polite"
+        >
 
-          <span class="health-dot"></span>
+          <span
+            class="health-dot"
+            aria-hidden="true"
+          ></span>
 
           <span id="health-label">
             Comprobando servidor...
           </span>
+
         </div>
 
       </header>
 
-      <!-- ESTADÍSTICAS -->
+      <!-- ===================================== -->
+      <!-- ESTADÍSTICAS                         -->
+      <!-- ===================================== -->
+
       <div class="quick-stats">
 
         <div class="stat-item">
-          <span class="stat-symbol">▣</span>
+
+          <span
+            class="stat-symbol"
+            aria-hidden="true"
+          >
+            ▣
+          </span>
+
           <div>
             <div class="stat-label">
               DOCUMENTOS INDEXADOS
             </div>
-            <strong id="stat-documents">0</strong>
+
+            <strong id="stat-documents">
+              0
+            </strong>
           </div>
+
         </div>
 
         <div class="stat-item">
-          <span class="stat-symbol">⌁</span>
+
+          <span
+            class="stat-symbol"
+            aria-hidden="true"
+          >
+            ⌁
+          </span>
+
           <div>
             <div class="stat-label">
               MODO DE CONSULTA
             </div>
-            <strong id="stat-mode">RAG activado</strong>
+
+            <strong id="stat-mode">
+              RAG activado
+            </strong>
           </div>
+
         </div>
 
         <div class="stat-item">
-          <span class="stat-symbol">◉</span>
+
+          <span
+            class="stat-symbol"
+            aria-hidden="true"
+          >
+            ◉
+          </span>
+
           <div>
             <div class="stat-label">
               CONSULTAS EN SESIÓN
             </div>
-            <strong id="stat-queries">0</strong>
+
+            <strong id="stat-queries">
+              0
+            </strong>
           </div>
+
         </div>
 
       </div>
 
-      <!-- CHAT -->
-      <section class="chat-panel"
-               aria-label="Chat documental">
+      <!-- ===================================== -->
+      <!-- CONVERSACIÓN                         -->
+      <!-- ===================================== -->
+
+      <section
+        class="chat-panel"
+        aria-label="Chat documental"
+      >
 
         <div class="chat-panel-header">
 
           <div class="chat-panel-title">
-            <span class="assistant-avatar">AI</span>
+
+            <span
+              class="assistant-avatar"
+              aria-hidden="true"
+            >
+              AI
+            </span>
 
             <div>
               <h2>Conversación</h2>
+
               <p>
                 Archivo TIC IA · Respuestas fundamentadas
               </p>
             </div>
+
           </div>
 
+          <!-- Herramientas del chat -->
           <div class="header-tools">
 
-            <span id="mode-tag" class="mode-tag">
+            <span
+              id="mode-tag"
+              class="mode-tag"
+            >
               ● File Search activo
             </span>
 
@@ -219,7 +377,9 @@
               type="button"
               id="export-chat"
               class="btn-icon-text"
-              disabled>
+              title="Exportar conversación a TXT"
+              disabled
+            >
               ↓ Exportar
             </button>
 
@@ -227,45 +387,66 @@
 
         </div>
 
-        <!-- NOTIFICACIONES -->
-        <div id="message"
-             class="notification"
-             role="status"
-             aria-live="polite"
-             hidden>
-        </div>
+        <!-- Notificaciones -->
+        <div
+          id="message"
+          class="notification"
+          role="status"
+          aria-live="polite"
+          hidden
+        ></div>
 
-        <!-- CONVERSACIÓN -->
-        <div id="conversation"
-             class="conversation"
-             aria-live="polite">
-        </div>
+        <!-- Mensajes -->
+        <div
+          id="conversation"
+          class="conversation"
+          aria-live="polite"
+          aria-relevant="additions"
+        ></div>
 
-        <!-- FORMULARIO -->
-        <form id="ask-form" class="composer">
+        <!-- =================================== -->
+        <!-- FORMULARIO DE CONSULTAS             -->
+        <!-- =================================== -->
+
+        <form
+          id="ask-form"
+          class="composer"
+        >
 
           <div class="composer-top">
 
+            <!-- Activar/desactivar RAG -->
             <div class="rag-switch">
-              <input type="checkbox"
-                     id="use-search"
-                     role="switch"
-                     checked>
+
+              <input
+                type="checkbox"
+                id="use-search"
+                role="switch"
+                checked
+              >
 
               <label for="use-search">
                 Consultar con File Search (RAG)
               </label>
+
             </div>
 
-            <span id="mode-note" class="composer-meta">
-              Solo documentos indexados
+            <span
+              id="mode-note"
+              class="composer-meta"
+            >
+              Búsqueda documental habilitada
             </span>
 
           </div>
 
+          <!-- Pregunta -->
           <div class="input-wrap">
 
-            <label class="visually-hidden" for="question">
+            <label
+              class="visually-hidden"
+              for="question"
+            >
               Escribe tu pregunta
             </label>
 
@@ -275,27 +456,33 @@
               minlength="3"
               maxlength="3000"
               placeholder="Pregúntame algo sobre tus documentos..."
-              required></textarea>
+              required
+            ></textarea>
 
             <div class="composer-actions">
 
-              <!-- NUEVO: COMPARADOR RAG -->
+              <!-- Comparador automático -->
               <button
                 type="button"
                 id="compare"
                 class="btn-compare"
-                title="Comparar respuestas con y sin File Search">
+                title="Comparar respuestas con y sin File Search"
+              >
+                <span aria-hidden="true">
+                  ⇄
+                </span>
 
-                <span aria-hidden="true">⇄</span>
                 Comparar RAG
               </button>
 
+              <!-- Enviar -->
               <button
                 type="submit"
                 id="ask"
                 class="btn-send"
                 title="Enviar pregunta"
-                aria-label="Enviar pregunta">
+                aria-label="Enviar pregunta"
+              >
                 ➜
               </button>
 
@@ -306,7 +493,8 @@
           <div class="composer-bottom">
 
             <span>
-              Ctrl + Enter para enviar · Comparar RAG realiza dos consultas
+              Ctrl + Enter para enviar ·
+              Comparar RAG realiza dos consultas
             </span>
 
             <span id="char-count">
@@ -319,26 +507,41 @@
 
       </section>
 
+      <!-- ===================================== -->
+      <!-- PIE DE PÁGINA                        -->
+      <!-- ===================================== -->
+
       <footer class="app-footer">
         Desarrollado por Derek Alejandro Vargas Meneses
         · ITIC · 22200792 · TecNM Pachuca · Práctica 2.3
       </footer>
 
     </main>
+
   </div>
 
-  <!-- PLANTILLA PARA NUEVA CONVERSACIÓN -->
+  <!-- ===================================== -->
+  <!-- PLANTILLA DE BIENVENIDA              -->
+  <!-- ===================================== -->
+
   <template id="empty-state-template">
 
     <div class="empty-state">
 
-      <div class="empty-orb">✦</div>
+      <div
+        class="empty-orb"
+        aria-hidden="true"
+      >
+        ✦
+      </div>
 
       <div class="empty-kicker">
         TU CONOCIMIENTO, A UN MENSAJE
       </div>
 
-      <h3>¿Qué quieres investigar hoy?</h3>
+      <h3>
+        ¿Qué quieres investigar hoy?
+      </h3>
 
       <p>
         Puedo localizar conceptos, resumir trabajos
@@ -348,36 +551,53 @@
 
       <div class="suggestion-grid">
 
-        <button type="button"
-                class="suggestion"
-                data-prompt="¿De qué temas tratan los documentos que tengo indexados?">
+        <button
+          type="button"
+          class="suggestion"
+          data-prompt="¿De qué temas tratan los documentos que tengo indexados?"
+        >
           ⌕
-          <span>Explora los temas de mis documentos</span>
+          <span>
+            Explora los temas de mis documentos
+          </span>
         </button>
 
-        <button type="button"
-                class="suggestion"
-                data-prompt="Resume los puntos más importantes de mis trabajos académicos.">
+        <button
+          type="button"
+          class="suggestion"
+          data-prompt="Resume los puntos más importantes de mis trabajos académicos."
+        >
           ≡
-          <span>Resume mis trabajos académicos</span>
+          <span>
+            Resume mis trabajos académicos
+          </span>
         </button>
 
-        <button type="button"
-                class="suggestion"
-                data-prompt="Compara los principales conceptos que aparecen en dos documentos relacionados.">
+        <button
+          type="button"
+          class="suggestion"
+          data-prompt="Compara los principales conceptos que aparecen en dos documentos relacionados."
+        >
           ⇄
-          <span>Compara documentos relacionados</span>
+          <span>
+            Compara documentos relacionados
+          </span>
         </button>
 
       </div>
+
     </div>
 
   </template>
 
-  <!-- JAVASCRIPT -->
-  <script type="module"
-          src="./assets/js/app.js?v=20261015-5">
-  </script>
+  <!-- ===================================== -->
+  <!-- JAVASCRIPT                            -->
+  <!-- ===================================== -->
+
+  <script
+    type="module"
+    src="./assets/js/app.js?v=20261015-7"
+  ></script>
 
 </body>
 </html>
