@@ -1,0 +1,8 @@
+
+# ==========================================
+# ARCHIVO TIC IA - PRACTICA 2.3
+# Configuracion del despliegue en Vercel
+# ==========================================
+
+[tool.vercel]
+entrypoint = "app.main:app"
