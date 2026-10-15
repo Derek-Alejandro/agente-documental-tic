@@ -1,7 +1,9 @@
 
 """
-Archivo TIC IA
-Punto de entrada para localhost y Vercel.
+Archivo TIC IA - Práctica 2.3
+
+Punto de entrada exclusivo para localhost.
+En Vercel se utiliza app.main:app.
 """
 
 from app.main import app
