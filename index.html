@@ -1,1 +1,383 @@
-<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Archivo TIC IA | Agente documental</title><link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"><link href="/assets/css/styles.css" rel="stylesheet"></head><body><header class="hero py-4"><div class="container d-flex flex-wrap justify-content-between align-items-center gap-3"><div><div class="eyebrow">PRÁCTICA 2.3 · INTELIGENCIA ARTIFICIAL APLICADA A LAS TIC</div><h1 class="h2 mb-1">Archivo TIC <span>IA</span></h1><p class="m-0 text-white-50">Agente documental con Google Drive y búsqueda semántica RAG</p></div><span class="badge rounded-pill border border-light text-light" id="health">Comprobando servidor…</span></div></header><main class="container py-4"><div class="row g-4"><div class="col-lg-4"><section class="card shell h-100"><div class="card-body"><div class="d-flex align-items-center justify-content-between"><h2 class="h5 mb-0">Base documental</h2><span class="badge text-bg-info" id="doc-count">0</span></div><p class="small text-secondary mt-2">Archivos indexados desde una carpeta autorizada de Google Drive.</p><div id="documents" class="doc-list" aria-live="polite">Sin documentos indexados.</div><button type="button" id="sync" class="btn btn-outline-primary w-100 mt-3">Sincronizar desde Drive</button><p class="small text-secondary mt-2 mb-0">La primera sincronización abrirá OAuth en el equipo donde corre Python. Uso exclusivamente local.</p></div></section></div><div class="col-lg-8"><section class="card shell"><div class="card-body"><h2 class="h5">Consultar al agente</h2><label class="form-label mt-2" for="question">Pregunta sobre los documentos</label><textarea class="form-control" id="question" rows="3" maxlength="3000" placeholder="¿Qué documentos explican Amazon RDS y sus conexiones?" required></textarea><div class="d-flex flex-wrap justify-content-between gap-2 align-items-center mt-3"><div class="form-check form-switch"><input id="use-search" class="form-check-input" type="checkbox" checked><label class="form-check-label" for="use-search">Activar File Search (RAG)</label></div><button class="btn btn-primary" type="button" id="ask">Consultar agente</button></div><div id="message" role="status" class="small mt-3" aria-live="polite"></div></div></section><section class="card shell mt-4"><div class="card-body"><h2 class="h5">Respuesta documental</h2><div id="answer" class="answer mt-3" aria-live="polite">Escribe una pregunta para comenzar.</div><h3 class="h6 mt-4">Fuentes verificables</h3><ul id="sources" class="list-group list-group-flush"></ul></div></section></div></div></main><footer class="container pb-4 small text-center text-secondary">Tecnológico Nacional de México · Campus Pachuca · Ingeniería en Sistemas Computacionales · Práctica 2.3</footer><script type="module" src="/assets/js/app.js"></script></body></html>
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101d35">
+  <meta name="description"
+        content="Archivo TIC IA - Agente documental con Google Drive y OpenAI">
+
+  <title>Archivo TIC IA | Agente documental</title>
+
+  <link rel="stylesheet"
+        href="./assets/css/styles.css?v=20261015-4">
+</head>
+
+<body>
+
+  <div class="css-warning" role="alert">
+    No se cargó styles.css.
+    Comprueba la ruta assets/css/styles.css.
+  </div>
+
+  <div class="workspace">
+
+    <!-- PANEL LATERAL -->
+    <aside class="sidebar" aria-label="Biblioteca documental">
+
+      <div class="sidebar-top">
+        <div class="brand-mark" aria-hidden="true">AI</div>
+
+        <div>
+          <div class="brand-name">
+            Archivo TIC <span>IA</span>
+          </div>
+          <div class="brand-caption">
+            AGENTE DOCUMENTAL · 2.3
+          </div>
+        </div>
+      </div>
+
+      <button type="button"
+              id="new-chat"
+              class="btn-new-chat">
+        <span class="plus-sign">＋</span>
+        Nueva conversación
+      </button>
+
+      <div class="sidebar-divider"></div>
+
+      <div class="section-heading">
+        <div>
+          <span class="section-kicker">BIBLIOTECA</span>
+          <h2>Mis documentos</h2>
+        </div>
+
+        <span class="count-pill" id="doc-count">0</span>
+      </div>
+
+      <label class="visually-hidden" for="doc-search">
+        Buscar documentos
+      </label>
+
+      <input
+        id="doc-search"
+        class="doc-filter-input"
+        type="search"
+        placeholder="Buscar documentos..."
+        autocomplete="off">
+
+      <label class="visually-hidden" for="doc-type">
+        Tipo de documento
+      </label>
+
+      <select id="doc-type" class="doc-type-select">
+        <option value="all">Todos los formatos</option>
+        <option value="pdf">PDF</option>
+        <option value="txt">TXT</option>
+        <option value="docs">Google Docs</option>
+      </select>
+
+      <div id="documents"
+           class="document-list"
+           aria-live="polite">
+
+        <div class="docs-placeholder">
+          Cargando biblioteca...
+        </div>
+      </div>
+
+      <div class="sidebar-actions">
+
+        <button type="button"
+                id="sync"
+                class="btn-sync">
+          <span id="sync-symbol">↻</span>
+          <span id="sync-label">Sincronizar Drive</span>
+        </button>
+
+        <button type="button"
+                id="refresh-docs"
+                class="btn-refresh"
+                title="Actualizar documentos"
+                aria-label="Actualizar documentos">
+          ↺
+        </button>
+
+      </div>
+
+      <p class="sidebar-hint">
+        Sincroniza tus documentos autorizados desde Google
+        Drive para mantener actualizado el índice de OpenAI.
+      </p>
+
+      <div class="sidebar-footer">
+        <span id="index-dot"
+              class="status-indicator"></span>
+
+        <span id="index-status">
+          Comprobando índice...
+        </span>
+      </div>
+
+    </aside>
+
+    <!-- ÁREA PRINCIPAL -->
+    <main class="main-area">
+
+      <header class="topbar">
+
+        <div class="topbar-left">
+          <span class="kicker">
+            INTELIGENCIA ARTIFICIAL APLICADA A LAS TIC
+          </span>
+
+          <h1>
+            Asistente documental
+            <span>inteligente</span>
+          </h1>
+
+          <p>
+            Pregunta, analiza y compara información
+            de tus propios documentos.
+          </p>
+        </div>
+
+        <div id="health"
+             class="health-pill"
+             role="status">
+
+          <span class="health-dot"></span>
+
+          <span id="health-label">
+            Comprobando servidor...
+          </span>
+        </div>
+
+      </header>
+
+      <!-- ESTADÍSTICAS -->
+      <div class="quick-stats">
+
+        <div class="stat-item">
+          <span class="stat-symbol">▣</span>
+          <div>
+            <div class="stat-label">
+              DOCUMENTOS INDEXADOS
+            </div>
+            <strong id="stat-documents">0</strong>
+          </div>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-symbol">⌁</span>
+          <div>
+            <div class="stat-label">
+              MODO DE CONSULTA
+            </div>
+            <strong id="stat-mode">RAG activado</strong>
+          </div>
+        </div>
+
+        <div class="stat-item">
+          <span class="stat-symbol">◉</span>
+          <div>
+            <div class="stat-label">
+              CONSULTAS EN SESIÓN
+            </div>
+            <strong id="stat-queries">0</strong>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- CHAT -->
+      <section class="chat-panel"
+               aria-label="Chat documental">
+
+        <div class="chat-panel-header">
+
+          <div class="chat-panel-title">
+            <span class="assistant-avatar">AI</span>
+
+            <div>
+              <h2>Conversación</h2>
+              <p>
+                Archivo TIC IA · Respuestas fundamentadas
+              </p>
+            </div>
+          </div>
+
+          <div class="header-tools">
+
+            <span id="mode-tag" class="mode-tag">
+              ● File Search activo
+            </span>
+
+            <button
+              type="button"
+              id="export-chat"
+              class="btn-icon-text"
+              disabled>
+              ↓ Exportar
+            </button>
+
+          </div>
+
+        </div>
+
+        <!-- NOTIFICACIONES -->
+        <div id="message"
+             class="notification"
+             role="status"
+             aria-live="polite"
+             hidden>
+        </div>
+
+        <!-- CONVERSACIÓN -->
+        <div id="conversation"
+             class="conversation"
+             aria-live="polite">
+        </div>
+
+        <!-- FORMULARIO -->
+        <form id="ask-form" class="composer">
+
+          <div class="composer-top">
+
+            <div class="rag-switch">
+              <input type="checkbox"
+                     id="use-search"
+                     role="switch"
+                     checked>
+
+              <label for="use-search">
+                Consultar con File Search (RAG)
+              </label>
+            </div>
+
+            <span id="mode-note" class="composer-meta">
+              Solo documentos indexados
+            </span>
+
+          </div>
+
+          <div class="input-wrap">
+
+            <label class="visually-hidden" for="question">
+              Escribe tu pregunta
+            </label>
+
+            <textarea
+              id="question"
+              rows="2"
+              minlength="3"
+              maxlength="3000"
+              placeholder="Pregúntame algo sobre tus documentos..."
+              required></textarea>
+
+            <div class="composer-actions">
+
+              <!-- NUEVO: COMPARADOR RAG -->
+              <button
+                type="button"
+                id="compare"
+                class="btn-compare"
+                title="Comparar respuestas con y sin File Search">
+
+                <span aria-hidden="true">⇄</span>
+                Comparar RAG
+              </button>
+
+              <button
+                type="submit"
+                id="ask"
+                class="btn-send"
+                title="Enviar pregunta"
+                aria-label="Enviar pregunta">
+                ➜
+              </button>
+
+            </div>
+
+          </div>
+
+          <div class="composer-bottom">
+
+            <span>
+              Ctrl + Enter para enviar · Comparar RAG realiza dos consultas
+            </span>
+
+            <span id="char-count">
+              0 / 3000
+            </span>
+
+          </div>
+
+        </form>
+
+      </section>
+
+      <footer class="app-footer">
+        Desarrollado por Derek Alejandro Vargas Meneses
+        · ITIC · 22200792 · TecNM Pachuca · Práctica 2.3
+      </footer>
+
+    </main>
+  </div>
+
+  <!-- PLANTILLA PARA NUEVA CONVERSACIÓN -->
+  <template id="empty-state-template">
+
+    <div class="empty-state">
+
+      <div class="empty-orb">✦</div>
+
+      <div class="empty-kicker">
+        TU CONOCIMIENTO, A UN MENSAJE
+      </div>
+
+      <h3>¿Qué quieres investigar hoy?</h3>
+
+      <p>
+        Puedo localizar conceptos, resumir trabajos
+        y comparar información dentro de los archivos
+        que has sincronizado desde Google Drive.
+      </p>
+
+      <div class="suggestion-grid">
+
+        <button type="button"
+                class="suggestion"
+                data-prompt="¿De qué temas tratan los documentos que tengo indexados?">
+          ⌕
+          <span>Explora los temas de mis documentos</span>
+        </button>
+
+        <button type="button"
+                class="suggestion"
+                data-prompt="Resume los puntos más importantes de mis trabajos académicos.">
+          ≡
+          <span>Resume mis trabajos académicos</span>
+        </button>
+
+        <button type="button"
+                class="suggestion"
+                data-prompt="Compara los principales conceptos que aparecen en dos documentos relacionados.">
+          ⇄
+          <span>Compara documentos relacionados</span>
+        </button>
+
+      </div>
+    </div>
+
+  </template>
+
+  <!-- JAVASCRIPT -->
+  <script type="module"
+          src="./assets/js/app.js?v=20261015-5">
+  </script>
+
+</body>
+</html>
