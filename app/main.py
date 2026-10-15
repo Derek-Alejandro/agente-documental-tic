@@ -1,17 +1,16 @@
 
 """
-Archivo TIC IA - Práctica 2.3
+Archivo TIC IA - Practica 2.3
 
 Backend FastAPI compatible con:
-- Localhost: Google Drive, OAuth y sincronización.
-- Vercel: consultas de OpenAI y File Search.
-
-La sincronización con Google Drive permanece
-disponible únicamente en localhost.
+- Localhost: Google Drive y sincronizacion.
+- Vercel: consultas a OpenAI y File Search.
 """
 
+import logging
 from pathlib import Path
 from ipaddress import ip_address
+from secrets import compare_digest
 
 from fastapi import (
     FastAPI,
@@ -19,109 +18,94 @@ from fastapi import (
     Request,
     Depends
 )
-
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.models.documento import AskRequest, AskResponse
-from app.services.document_index import load_document_index
-from app.services.agent_service import AgentService
 
 
 # ==========================================
-# CONFIGURACION GENERAL
+# CONFIGURACION
 # ==========================================
+
+log = logging.getLogger("archivo_tic_ia")
 
 ROOT = Path(__file__).resolve().parents[1]
 
 app = FastAPI(
     title="Archivo TIC IA",
-    description=(
-        "Agente documental con Google Drive, "
-        "OpenAI Responses API y File Search"
-    ),
-    version="1.1.0"
+    description="Agente documental con OpenAI y Google Drive",
+    version="1.2.0"
 )
 
 
 # ==========================================
-# CORS PARA GITHUB PAGES
+# ORIGENES PERMITIDOS
 # ==========================================
 
-if settings.frontend_origin:
+# Este es el origen correcto de GitHub Pages.
+# NO incluye /agente-documental-tic/.
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            settings.frontend_origin
-        ],
-        allow_methods=[
-            "GET",
-            "POST",
-            "OPTIONS"
-        ],
-        allow_headers=[
-            "Content-Type"
-        ],
-        allow_credentials=False
+allowed_origins = {
+    "https://derek-alejandro.github.io"
+}
+
+# Agregar el origen de las variables de entorno.
+
+if settings.frontend_origin:
+    allowed_origins.add(
+        settings.frontend_origin.strip().rstrip("/")
     )
+
+
+# ==========================================
+# CACHE
+# ==========================================
+
+@app.middleware("http")
+async def no_api_cache(request: Request, call_next):
+
+    response = await call_next(request)
+
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+
+    return response
 
 
 # ==========================================
 # ARCHIVOS ESTATICOS
 # ==========================================
 
-# En localhost FastAPI sirve la interfaz.
-# En Vercel solo necesitamos los endpoints API.
+# GitHub Pages sirve el frontend en producción.
+# FastAPI sirve los archivos HTML/CSS/JS en local.
 
-if not settings.is_vercel:
-
+if (
+    not settings.is_vercel
+    and (ROOT / "assets").is_dir()
+):
     app.mount(
         "/assets",
-        StaticFiles(
-            directory=ROOT / "assets"
-        ),
+        StaticFiles(directory=ROOT / "assets"),
         name="assets"
     )
 
 
 # ==========================================
-# EVITAR CACHE EN ENDPOINTS API
-# ==========================================
-
-@app.middleware("http")
-async def no_api_cache(
-    request: Request,
-    call_next
-):
-
-    response = await call_next(request)
-
-    if request.url.path.startswith("/api/"):
-        response.headers[
-            "Cache-Control"
-        ] = "no-store"
-
-    return response
-
-
-# ==========================================
-# PROTECCION DE SINCRONIZACION LOCAL
+# SEGURIDAD DE SINCRONIZACION
 # ==========================================
 
 def local_only(request: Request):
 
-    # Vercel no debe iniciar Google OAuth.
-    if settings.is_vercel:
+    # OAuth de escritorio nunca debe
+    # ejecutarse desde Vercel.
 
+    if settings.is_vercel:
         raise HTTPException(
             status_code=404,
-            detail=(
-                "Sincronización disponible "
-                "solo en localhost"
-            )
+            detail="Sincronización disponible solo en localhost"
         )
 
     host = (
@@ -131,60 +115,51 @@ def local_only(request: Request):
     )
 
     try:
-
         if not ip_address(host).is_loopback:
-            raise ValueError()
+            raise ValueError("No es loopback")
 
     except ValueError:
-
         raise HTTPException(
             status_code=403,
-            detail=(
-                "Sincronización disponible "
-                "solo desde localhost"
-            )
+            detail="Sincronización permitida solo desde localhost"
         )
 
-    # Clave administrativa opcional.
-    key = settings.local_admin_key
+    # Clave administrativa local opcional.
 
-    if key:
+    if settings.local_admin_key:
 
-        provided_key = request.headers.get(
-            "X-Admin-Key"
+        provided = request.headers.get(
+            "X-Admin-Key", ""
         )
 
-        if provided_key != key:
-
+        if not compare_digest(
+            provided,
+            settings.local_admin_key
+        ):
             raise HTTPException(
                 status_code=401,
-                detail=(
-                    "Clave administrativa incorrecta"
-                )
+                detail="Clave administrativa incorrecta"
             )
 
 
 # ==========================================
-# ENDPOINT PRINCIPAL
+# RUTA PRINCIPAL
 # ==========================================
 
 @app.get("/")
 def index():
 
     if settings.is_vercel:
-
         return {
             "service": "Archivo TIC IA API",
             "status": "ok"
         }
 
-    return FileResponse(
-        ROOT / "index.html"
-    )
+    return FileResponse(ROOT / "index.html")
 
 
 # ==========================================
-# VERIFICACION DEL SERVIDOR
+# ESTADO DEL SERVIDOR
 # ==========================================
 
 @app.get("/api/health")
@@ -218,40 +193,45 @@ def health():
 @app.get("/api/documents")
 def documents():
 
-    try:
+    # Importacion diferida.
+    # /api/health puede funcionar incluso
+    # si el indice tiene un problema.
 
+    from app.services.document_index import (
+        load_document_index
+    )
+
+    try:
         manifest = load_document_index()
 
     except ValueError as exc:
-
         raise HTTPException(
             status_code=503,
             detail=str(exc)
         ) from exc
 
-    docs = list(
-        manifest.get(
-            "documents",
-            {}
-        ).values()
-    )
+    entries = manifest.get("documents", {})
 
-    vector_store_configured = bool(
-        settings.vector_store_id
-        or manifest.get("vector_store_id")
-    )
+    if not isinstance(entries, dict):
+        raise HTTPException(
+            status_code=503,
+            detail="El inventario documental tiene un formato inválido"
+        )
+
+    docs = list(entries.values())
 
     return {
         "documents": docs,
         "indexed": len(docs),
-        "vector_store_configured": (
-            vector_store_configured
+        "vector_store_configured": bool(
+            settings.vector_store_id
+            or manifest.get("vector_store_id")
         )
     }
 
 
 # ==========================================
-# PREGUNTAS A OPENAI
+# CONSULTAR OPENAI
 # ==========================================
 
 @app.post(
@@ -260,13 +240,20 @@ def documents():
 )
 def ask(payload: AskRequest):
 
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Falta la configuración de OpenAI"
+        )
+
     try:
 
-        if not settings.openai_api_key:
+        # Solo importar OpenAI cuando
+        # se realice una consulta.
 
-            raise ValueError(
-                "Falta OPENAI_API_KEY"
-            )
+        from app.services.agent_service import (
+            AgentService
+        )
 
         agent = AgentService()
 
@@ -282,14 +269,16 @@ def ask(payload: AskRequest):
             detail=str(exc)
         ) from exc
 
-    except Exception as exc:
+    except Exception:
+
+        log.exception(
+            "Error durante la consulta documental"
+        )
 
         raise HTTPException(
             status_code=502,
-            detail=(
-                "Error al consultar OpenAI"
-            )
-        ) from exc
+            detail="No se pudo completar la consulta de OpenAI"
+        )
 
 
 # ==========================================
@@ -298,24 +287,22 @@ def ask(payload: AskRequest):
 
 @app.post(
     "/api/sync",
-    dependencies=[
-        Depends(local_only)
-    ]
+    dependencies=[Depends(local_only)]
 )
 def sync():
 
-    # Importación diferida: no se inicia
-    # Google OAuth en Vercel.
+    if not settings.openai_api_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Falta la configuración de OpenAI"
+        )
+
+    # Este modulo solo se carga cuando
+    # se sincroniza desde localhost.
 
     from app.services.sync_service import SyncService
 
     try:
-
-        if not settings.openai_api_key:
-
-            raise ValueError(
-                "Falta OPENAI_API_KEY"
-            )
 
         service = SyncService()
 
@@ -328,11 +315,35 @@ def sync():
             detail=str(exc)
         ) from exc
 
-    except Exception as exc:
+    except Exception:
+
+        log.exception(
+            "Error durante la sincronizacion de Drive"
+        )
 
         raise HTTPException(
             status_code=502,
-            detail=(
-                f"Sincronización fallida: {exc}"
-            )
-        ) from exc
+            detail="No se pudo completar la sincronización"
+        )
+
+
+# ==========================================
+# CORS PARA GITHUB PAGES
+# ==========================================
+
+# Se registra al final para envolver los
+# demás middlewares de la aplicación.
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=sorted(allowed_origins),
+    allow_methods=[
+        "GET",
+        "POST",
+        "OPTIONS"
+    ],
+    allow_headers=[
+        "Content-Type"
+    ],
+    allow_credentials=False
+)
